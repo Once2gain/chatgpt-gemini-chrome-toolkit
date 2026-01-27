@@ -92,4 +92,4 @@ const state = {
 
 如果这个插件对你有用，顺手点个star吧，拜托了这对我真的很重要！
 
-![alt text](/image/收款码.jpg)
+<img src="./image/收款码.jpg" width = "250"/>
