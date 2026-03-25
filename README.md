@@ -2,7 +2,7 @@
 
 Browser extension for ChatGPT and Gemini with long-chat optimization, previous/next user-turn navigation, JSON export, and bulk conversation delete.
 
-Built for long AI chat workflows: ChatGPT/Gemini long conversation optimization, chat history navigation, previous-turn jump, bulk conversation delete, and one-click current conversation export. It also targets common Chinese search intents such as `ChatGPT长历史上下文优化`、`长对话优化`、`上一轮对话跳转`、`conversation 批量删除`、`当前会话一键导出` and `Gemini 对话增强`.
+Built for long AI chat workflows: ChatGPT/Gemini long conversation optimization, chat history navigation, previous-turn jump, bulk conversation delete, and one-click current conversation export. 
 
 ![Toolkit UI](./image/toolkit.png)
 
