@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "ChatGPT Conversation Toolkit",
+  "name": "ChatGPT & Gemini Conversation Toolkit",
   "version": "1.0.0",
-  "description": "Optimize long ChatGPT conversations and export full sessions with one click.",
+  "description": "Chrome extension for ChatGPT and Gemini: long-chat optimization, JSON export, previous/next user-turn jump, and bulk conversation delete.",
   "content_scripts": [
     {
       "matches": [
         "https://chat.openai.com/*",
-        "https://chatgpt.com/*"
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*"
       ],
       "js": [
         "contentScript.js"
@@ -21,6 +22,20 @@
   "permissions": [],
   "host_permissions": [
     "https://chat.openai.com/*",
-    "https://chatgpt.com/*"
+    "https://chatgpt.com/*",
+    "https://gemini.google.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "image/icon.jpg",
+        "gemini-icon.png"
+      ],
+      "matches": [
+        "https://chat.openai.com/*",
+        "https://chatgpt.com/*",
+        "https://gemini.google.com/*"
+      ]
+    }
   ]
 }
