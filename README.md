@@ -1,93 +1,54 @@
-# ChatGPT & Gemini Conversation Toolkit
+# ChatGPT & Gemini Chrome Toolkit
 
-A Chrome-compatible browser extension for `chatgpt.com`, `chat.openai.com`, and `gemini.google.com`.
+Browser extension for ChatGPT and Gemini with long-chat optimization, user-turn navigation, JSON export, and bulk conversation delete.
 
-It focuses on long-conversation usability:
+![Toolkit UI](./image/toolkit.png)
 
-- Optimize long chats by temporarily hiding older turns
-- Jump to the previous or next user message
-- Export the full current conversation as JSON
-- Bulk delete rendered sidebar conversations
-- Use the same floating toolkit UI on both ChatGPT and Gemini
+## Features
 
-![Toolkit preview](./image/image.png)
+- Optimize long conversations by collapsing older rendered turns
+- Restore hidden turns with the same toggle button
+- Jump to the previous or next user turn
+- Export the current conversation as JSON
+- Bulk delete sidebar conversations that are currently rendered
+- Use the same floating toolkit UI on ChatGPT and Gemini
 
-## Current improvements
+## Supported Sites
 
-Compared with the original ChatGPT-only version, this edition adds:
-
-- ChatGPT and Gemini dual-site support
-- A single toggle button for `优化长会话 / 恢复隐藏消息`
-- `上一轮 / 下一轮` user-turn navigation
-- Integrated bulk delete mode with refined checkbox UI
-- A custom bulk-delete confirmation dialog
-- A draggable floating icon with anchored popup behavior
+- `https://chatgpt.com/*`
+- `https://chat.openai.com/*`
+- `https://gemini.google.com/*`
 
 ## Install
-
-### Chrome / Edge
 
 1. Open `chrome://extensions/` or `edge://extensions/`
 2. Enable `Developer mode`
 3. Click `Load unpacked`
-4. Select this project folder
+4. Select this folder: `chatgpt-Long-conversation-optimization`
 
-### Firefox
+## Toolkit Actions
 
-1. Open `about:debugging#/runtime/this-firefox`
-2. Click `Load Temporary Add-on`
-3. Select `manifest.json` in this project
+- `优化长会话`: collapse older rendered messages in the current thread
+- `上一轮 / 下一轮`: jump by user turns instead of scrolling through long assistant replies
+- `一键导出`: export the current conversation as JSON
+- `批量删除 conversation`: select rendered sidebar conversations and remove them in bulk
 
-## Usage
+## What This Fork Adds
 
-1. Open a ChatGPT or Gemini conversation page
-2. Click the floating round icon to expand the toolkit
-3. Use:
-   - `上一轮 / 下一轮` to navigate by user turns
-   - `优化长会话` to hide older rendered turns
-   - `一键导出` to export the full conversation JSON
-   - `批量删除 conversation` to select and remove rendered sidebar conversations
+- Gemini support with the same floating toolkit experience
+- Previous / next user-turn navigation
+- Integrated bulk-delete workflow inside the main popup
+- Refined checkbox UI and confirmation flow for batch delete
+- Draggable floating icon with anchored popup behavior
 
-## Export format
+## Credits
 
-```json
-{
-  "site": "ChatGPT or Gemini",
-  "exportedAt": "2026-03-25T08:00:00.000Z",
-  "url": "https://chatgpt.com/c/...",
-  "messageCount": 2,
-  "messages": [
-    {
-      "index": 1,
-      "role": "user",
-      "text": "Hello"
-    },
-    {
-      "index": 2,
-      "role": "assistant",
-      "text": "Hi"
-    }
-  ]
-}
-```
+This project is based on:
 
-## Project origin
+- [bujue3709/chatgpt-Long-conversation-optimization](https://github.com/bujue3709/chatgpt-Long-conversation-optimization)
 
-This repository is forked and extended from the local project:
+It also integrates bulk-delete ideas and workflow from:
 
-- `/Users/onceblossom/Desktop/git/ChatGPT-Chrome-Toolkit/chatgpt-Long-conversation-optimization`
-  Upstream: [bujue3709/chatgpt-Long-conversation-optimization](https://github.com/bujue3709/chatgpt-Long-conversation-optimization)
+- [qcrao/bulk-delete-chatGPT](https://github.com/qcrao/bulk-delete-chatGPT)
 
-It also integrates bulk-delete functionality from the local project:
-
-- `/Users/onceblossom/Desktop/git/ChatGPT-Chrome-Toolkit/bulk-delete-chatGPT`
-  Upstream: [qcrao/bulk-delete-chatGPT](https://github.com/qcrao/bulk-delete-chatGPT)
-
-Thanks to both original authors for the foundation and ideas that made this version possible.
-
-## Files
-
-- `manifest.json`: extension manifest
-- `contentScript.js`: core behavior and site adapters
-- `styles.css`: floating toolkit styles
-- `image/`: README assets
+Thanks to both original authors for the foundation of this project.
