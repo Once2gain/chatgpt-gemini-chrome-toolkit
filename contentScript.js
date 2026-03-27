@@ -19,15 +19,34 @@
   const NAVIGATION_TARGET_OFFSET = 112;
   const NAVIGATION_TARGET_LINE = 112;
   const NAVIGATION_TOLERANCE = 20;
+  const DEFAULT_VISIBLE_ROUNDS = 5;
   const TOOLKIT_POPUP_GAP = 12;
   const TOOLKIT_VIEWPORT_MARGIN = 16;
+  const OBSERVED_DOM_REFRESH_DELAY = 120;
   const SIDEBAR_ROW_CLASS = "chatgpt-toolkit-sidebar-row";
   const SIDEBAR_LINK_CLASS = "chatgpt-toolkit-sidebar-link";
   const SIDEBAR_CHECKBOX_HOST_CLASS = "chatgpt-toolkit-sidebar-checkbox-host";
   const SIDEBAR_CHECKBOX_CLASS = "chatgpt-toolkit-sidebar-checkbox";
+  const UNFOLD_ROUNDS_INPUT_ID = "chatgpt-toolkit-unfold-rounds";
   const GEMINI_SIDEBAR_LINK_SELECTOR = 'a[data-test-id="conversation"][href]';
   const GEMINI_SIDEBAR_ROW_SELECTOR = ".conversation-items-container";
   const GEMINI_MESSAGE_CONTAINER_SELECTOR = ".conversation-container";
+  const OBSERVED_REFRESH_RELEVANT_SELECTOR = [
+    "main",
+    "nav",
+    "aside",
+    "article",
+    "[data-message-author-role]",
+    "[data-conversation-id]",
+    '[data-testid^="conversation-turn-"]',
+    '[data-test-id="chat-history-container"]',
+    '[id^="history"]',
+    '[id^="conversations-list-"]',
+    GEMINI_SIDEBAR_LINK_SELECTOR,
+    GEMINI_SIDEBAR_ROW_SELECTOR,
+    GEMINI_MESSAGE_CONTAINER_SELECTOR,
+    "chat-window-content",
+  ].join(", ");
 
   const IS_GEMINI = /(^|\.)gemini\.google\.com$/i.test(window.location.hostname);
   const PRODUCT_NAME = IS_GEMINI ? "Gemini" : "ChatGPT";
@@ -97,7 +116,7 @@
   const state = {
     isCollapsed: false,
     isMinimized: true,
-    keepLatest: 20,
+    visibleRoundCount: DEFAULT_VISIBLE_ROUNDS,
     collapsedNodes: [],
     cachedNodes: [],
     conversationKey: null,
@@ -152,6 +171,47 @@
         .filter(Boolean)
         .join(" ")
     );
+
+  const isToolkitManagedElement = (element) =>
+    Boolean(
+      element &&
+        (element.id === TOOLKIT_ID ||
+          element.id === TOOLKIT_ANCHOR_ID ||
+          element.id === CONFIRM_DIALOG_ID ||
+          element.closest?.(`#${TOOLKIT_ANCHOR_ID}`) ||
+          element.closest?.(`#${CONFIRM_DIALOG_ID}`))
+    );
+
+  const mutationNodeCouldAffectToolkit = (node) => {
+    if (!(node instanceof Element) || isToolkitManagedElement(node)) {
+      return false;
+    }
+
+    return (
+      node.matches(OBSERVED_REFRESH_RELEVANT_SELECTOR) ||
+      Boolean(node.querySelector(OBSERVED_REFRESH_RELEVANT_SELECTOR))
+    );
+  };
+
+  const shouldScheduleObservedDomRefresh = (mutations) => {
+    if (!getToolkitAnchor() || !document.getElementById(TOOLKIT_ID)) {
+      return true;
+    }
+
+    return mutations.some((mutation) => {
+      if (mutation.type !== "childList") {
+        return false;
+      }
+
+      if (mutation.target instanceof Element && isToolkitManagedElement(mutation.target)) {
+        return false;
+      }
+
+      return [...mutation.addedNodes, ...mutation.removedNodes].some((node) =>
+        mutationNodeCouldAffectToolkit(node)
+      );
+    });
+  };
 
   const extractSanitizedText = (node, selectors = []) => {
     if (!node) {
@@ -261,6 +321,7 @@
 
   const resetConversationState = () => {
     state.isCollapsed = false;
+    state.visibleRoundCount = DEFAULT_VISIBLE_ROUNDS;
     state.collapsedNodes = [];
     state.cachedNodes = [];
     clearJumpHighlight();
@@ -474,61 +535,258 @@
     }
   };
 
-  const collapseOldMessages = () => {
-    ensureConversationState();
-    const nodes = getMessageNodes();
-    if (nodes.length <= state.keepLatest) {
-      updateStatus("当前消息数量较少，无需优化。", "info");
-      return;
-    }
-
-    state.cachedNodes = nodes;
-    const toCollapse = nodes.slice(0, nodes.length - state.keepLatest);
-
-    state.collapsedNodes = toCollapse.map((node) => ({
-      node,
-      parent: node.parentNode,
-      nextSibling: node.nextSibling,
-    }));
-
-    toCollapse.forEach((node) => node.remove());
-
-    state.isCollapsed = true;
-    renderCollapseToggleControl();
-    updateStatus(`已优化：隐藏 ${toCollapse.length} 条旧消息。`, "success");
+  const getAllConversationNodes = () => {
+    const visibleNodes = getMessageNodes();
+    const collapsedNodeSet = new Set(state.collapsedNodes.map(({ node }) => node));
+    state.cachedNodes = dedupeElements(
+      [
+        ...state.cachedNodes.filter(
+          (node) => Boolean(node) && (document.contains(node) || collapsedNodeSet.has(node))
+        ),
+        ...visibleNodes,
+      ],
+      (node) => node
+    );
+    return state.cachedNodes;
   };
 
-  const restoreMessages = () => {
-    ensureConversationState();
-    if (!state.isCollapsed) {
-      updateStatus("没有需要恢复的消息。", "info");
-      return;
-    }
+  const buildConversationRounds = (nodes) => {
+    const rounds = [];
+    let pendingPreludeNodes = [];
 
-    state.collapsedNodes.forEach(({ node, parent, nextSibling }) => {
-      if (!parent) {
+    nodes.forEach((node) => {
+      if (!node) {
         return;
       }
-      if (nextSibling && parent.contains(nextSibling)) {
-        parent.insertBefore(node, nextSibling);
+
+      const roleSource = IS_GEMINI ? node : getChatGptRoleNode(node);
+      const role = detectRole(roleSource);
+
+      if (role === "user") {
+        const roundNodes = pendingPreludeNodes.length ? [...pendingPreludeNodes, node] : [node];
+        rounds.push({
+          index: rounds.length + 1,
+          nodes: roundNodes,
+          userNode: node,
+        });
+        pendingPreludeNodes = [];
+        return;
+      }
+
+      if (rounds.length === 0) {
+        pendingPreludeNodes.push(node);
+        return;
+      }
+
+      rounds[rounds.length - 1].nodes.push(node);
+    });
+
+    if (pendingPreludeNodes.length > 0) {
+      if (rounds.length > 0) {
+        rounds[0].nodes.unshift(...pendingPreludeNodes);
       } else {
-        parent.appendChild(node);
+        rounds.push({
+          index: 1,
+          nodes: [...pendingPreludeNodes],
+          userNode: null,
+        });
+      }
+    }
+
+    return rounds.filter(({ nodes: roundNodes }) => roundNodes.length > 0);
+  };
+
+  const getConversationRoundSummary = (nodes = getAllConversationNodes()) => {
+    const rounds = buildConversationRounds(nodes);
+    const clampedVisibleRoundCount = Math.max(1, state.visibleRoundCount);
+    const hiddenRoundCount = Math.max(0, rounds.length - clampedVisibleRoundCount);
+
+    return {
+      rounds,
+      totalRounds: rounds.length,
+      visibleRoundCount: rounds.length - hiddenRoundCount,
+      hiddenRoundCount,
+    };
+  };
+
+  const restoreNodesInConversationOrder = (nodesToRestore, orderedNodes, collapsedNodeMap) => {
+    const restoreSet = new Set(nodesToRestore);
+
+    for (let index = orderedNodes.length - 1; index >= 0; index -= 1) {
+      const node = orderedNodes[index];
+      if (!restoreSet.has(node) || document.contains(node)) {
+        continue;
+      }
+
+      const record = collapsedNodeMap.get(node);
+      if (!record?.parent || !record.parent.isConnected) {
+        continue;
+      }
+
+      let referenceNode = null;
+      for (let nextIndex = index + 1; nextIndex < orderedNodes.length; nextIndex += 1) {
+        const candidate = orderedNodes[nextIndex];
+        if (candidate?.parentNode === record.parent) {
+          referenceNode = candidate;
+          break;
+        }
+      }
+
+      if (referenceNode) {
+        record.parent.insertBefore(node, referenceNode);
+      } else {
+        record.parent.appendChild(node);
+      }
+    }
+  };
+
+  const syncCollapsedNodes = (targetHiddenNodes, orderedNodes) => {
+    const currentCollapsedRecords = state.collapsedNodes.filter(({ node }) => Boolean(node));
+    const currentCollapsedMap = new Map(
+      currentCollapsedRecords.map((record) => [record.node, record])
+    );
+    const targetHiddenSet = new Set(targetHiddenNodes);
+
+    const nodesToRestore = currentCollapsedRecords
+      .map((record) => record.node)
+      .filter((node) => !targetHiddenSet.has(node));
+
+    if (nodesToRestore.length > 0) {
+      restoreNodesInConversationOrder(nodesToRestore, orderedNodes, currentCollapsedMap);
+    }
+
+    const nextCollapsedMap = new Map();
+    targetHiddenNodes.forEach((node) => {
+      const existingRecord = currentCollapsedMap.get(node);
+      if (existingRecord) {
+        nextCollapsedMap.set(node, existingRecord);
+        return;
+      }
+
+      if (node?.parentNode) {
+        nextCollapsedMap.set(node, {
+          node,
+          parent: node.parentNode,
+        });
       }
     });
 
-    state.collapsedNodes = [];
-    state.isCollapsed = false;
-    renderCollapseToggleControl();
-    updateStatus("已恢复所有消息。", "success");
+    targetHiddenNodes.forEach((node) => {
+      if (currentCollapsedMap.has(node)) {
+        return;
+      }
+
+      const record = nextCollapsedMap.get(node);
+      if (!record?.parent) {
+        return;
+      }
+
+      node.remove();
+    });
+
+    state.collapsedNodes = targetHiddenNodes
+      .map((node) => nextCollapsedMap.get(node))
+      .filter(Boolean);
+    state.isCollapsed = state.collapsedNodes.length > 0;
   };
 
-  const toggleCollapsedMessages = () => {
+  const applyConversationFoldState = (visibleRoundCount = state.visibleRoundCount) => {
     ensureConversationState();
-    if (state.isCollapsed) {
-      restoreMessages();
+
+    const normalizedVisibleRoundCount = Math.max(
+      1,
+      Number.parseInt(String(visibleRoundCount), 10) || DEFAULT_VISIBLE_ROUNDS
+    );
+    state.visibleRoundCount = normalizedVisibleRoundCount;
+
+    const allNodes = getAllConversationNodes();
+    const rounds = buildConversationRounds(allNodes);
+    const hiddenRoundCount = Math.max(0, rounds.length - normalizedVisibleRoundCount);
+    const targetHiddenNodes =
+      hiddenRoundCount > 0
+        ? rounds.slice(0, hiddenRoundCount).flatMap(({ nodes: roundNodes }) => roundNodes)
+        : [];
+
+    syncCollapsedNodes(targetHiddenNodes, allNodes);
+    renderCollapseToggleControl();
+
+    return {
+      totalRounds: rounds.length,
+      visibleRoundCount: rounds.length - hiddenRoundCount,
+      hiddenRoundCount,
+      hiddenNodeCount: targetHiddenNodes.length,
+    };
+  };
+
+  const foldConversationConvs = () => {
+    const result = applyConversationFoldState(DEFAULT_VISIBLE_ROUNDS);
+
+    if (result.totalRounds === 0) {
+      updateStatus("当前会话尚未加载完成。", "info");
       return;
     }
-    collapseOldMessages();
+
+    if (result.hiddenRoundCount === 0) {
+      updateStatus(`当前会话不足 ${DEFAULT_VISIBLE_ROUNDS} 轮，无需折叠。`, "info");
+      return;
+    }
+
+    updateStatus(`已折叠，仅保留最新 ${result.visibleRoundCount} 轮对话。`, "success");
+  };
+
+  const getUnfoldRoundsInput = () => document.getElementById(UNFOLD_ROUNDS_INPUT_ID);
+
+  const sanitizeUnfoldRoundsInput = (input, commit = false) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return DEFAULT_VISIBLE_ROUNDS;
+    }
+
+    const digitsOnly = input.value.replace(/\D+/g, "").replace(/^0+/, "");
+    if (!digitsOnly) {
+      if (commit) {
+        input.value = String(DEFAULT_VISIBLE_ROUNDS);
+      } else {
+        input.value = "";
+      }
+      return DEFAULT_VISIBLE_ROUNDS;
+    }
+
+    input.value = digitsOnly;
+    return Number.parseInt(digitsOnly, 10);
+  };
+
+  const readUnfoldRoundsInputValue = () => {
+    const input = getUnfoldRoundsInput();
+    return sanitizeUnfoldRoundsInput(input, true);
+  };
+
+  const renderUnfoldRoundsInput = () => {
+    const input = getUnfoldRoundsInput();
+    if (!input) {
+      return;
+    }
+    sanitizeUnfoldRoundsInput(input, true);
+  };
+
+  const unfoldConversationRounds = () => {
+    ensureConversationState();
+    const before = getConversationRoundSummary();
+    if (before.totalRounds === 0) {
+      updateStatus("当前会话尚未加载完成。", "info");
+      return;
+    }
+
+    const unfoldRounds = readUnfoldRoundsInputValue();
+    const nextVisibleRoundCount = before.visibleRoundCount + unfoldRounds;
+    const result = applyConversationFoldState(nextVisibleRoundCount);
+    const expandedRoundCount = result.visibleRoundCount - before.visibleRoundCount;
+
+    if (expandedRoundCount <= 0) {
+      updateStatus("没有更多可展开的对话轮次。", "info");
+      return;
+    }
+
+    updateStatus(`已向上展开 ${expandedRoundCount} 轮对话。`, "success");
   };
 
   const isScrollableElement = (element) => {
@@ -666,10 +924,6 @@
       clearJumpHighlight();
     }
 
-    if (state.isCollapsed) {
-      restoreMessages();
-    }
-
     const userAnchors = getUserMessageAnchors();
     if (userAnchors.length === 0) {
       updateStatus("当前会话中没有可定位的用户消息。", "info");
@@ -697,10 +951,14 @@
     }
 
     if (!targetAnchor) {
-      updateStatus(
-        direction === "up" ? "已经到达第一轮用户消息。" : "已经到达最后一轮用户消息。",
-        "info"
-      );
+      if (direction === "up" && state.collapsedNodes.length > 0) {
+        updateStatus("已经到达当前展开区域的第一轮用户消息，可使用 Unfold 展开更多。", "info");
+      } else {
+        updateStatus(
+          direction === "up" ? "已经到达第一轮用户消息。" : "已经到达最后一轮用户消息。",
+          "info"
+        );
+      }
       return;
     }
 
@@ -717,10 +975,7 @@
 
   const exportMessages = () => {
     ensureConversationState();
-    const visibleNodes = getMessageNodes();
-    const nodesForExport = state.isCollapsed
-      ? [...state.cachedNodes, ...visibleNodes.filter((node) => !state.cachedNodes.includes(node))]
-      : visibleNodes;
+    const nodesForExport = getAllConversationNodes();
     const messages = buildMessagePayload(nodesForExport);
 
     const payload = {
@@ -846,8 +1101,8 @@
     if (!button) {
       return;
     }
-    button.textContent = state.isCollapsed ? "恢复隐藏消息" : "优化长会话";
-    button.setAttribute("aria-pressed", state.isCollapsed ? "true" : "false");
+    button.textContent = "Fold Convs";
+    button.setAttribute("aria-label", "Fold Convs");
   };
 
   const removeBulkDeleteDecorations = () => {
@@ -1387,9 +1642,23 @@
             下一轮
           </button>
         </div>
-        <button type="button" id="${COLLAPSE_TOGGLE_BUTTON_ID}" class="chatgpt-toolkit-button" data-action="toggle-collapse" aria-pressed="false">
-          优化长会话
+        <button type="button" id="${COLLAPSE_TOGGLE_BUTTON_ID}" class="chatgpt-toolkit-button" data-action="fold-conversations">
+          Fold Convs
         </button>
+        <div class="chatgpt-toolkit-button-row chatgpt-toolkit-inline-action">
+          <button type="button" class="chatgpt-toolkit-button" data-action="unfold-rounds">
+            Unfold
+          </button>
+          <input
+            type="text"
+            id="${UNFOLD_ROUNDS_INPUT_ID}"
+            class="chatgpt-toolkit-round-input"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            value="${DEFAULT_VISIBLE_ROUNDS}"
+            aria-label="展开轮数"
+          />
+        </div>
         <button type="button" class="chatgpt-toolkit-button primary" data-action="export">
           一键导出
         </button>
@@ -1434,8 +1703,11 @@
       if (action === "minimize") {
         minimizeToolbar();
       }
-      if (action === "toggle-collapse") {
-        toggleCollapsedMessages();
+      if (action === "fold-conversations") {
+        foldConversationConvs();
+      }
+      if (action === "unfold-rounds") {
+        unfoldConversationRounds();
       }
       if (action === "jump-user-up") {
         navigateUserMessage("up");
@@ -1459,6 +1731,28 @@
         requestBulkDeleteConfirmation();
       }
     });
+
+    container.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.id !== UNFOLD_ROUNDS_INPUT_ID) {
+        return;
+      }
+
+      sanitizeUnfoldRoundsInput(target, false);
+    });
+
+    container.addEventListener(
+      "blur",
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.id !== UNFOLD_ROUNDS_INPUT_ID) {
+          return;
+        }
+
+        sanitizeUnfoldRoundsInput(target, true);
+      },
+      true
+    );
 
     return container;
   };
@@ -1713,7 +2007,9 @@
     enableDrag(anchor, minimizedButton);
     ensureConversationState();
     renderCollapseToggleControl();
+    renderUnfoldRoundsInput();
     renderBulkDeleteControls();
+    applyConversationFoldState(state.visibleRoundCount);
     renderToolbarVisibility();
 
     if (state.bulkDeleteMode) {
@@ -1775,22 +2071,26 @@
     }
 
     state.observerRefreshQueued = true;
-    window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
       state.observerRefreshQueued = false;
 
       if (!getToolkitAnchor() || !document.getElementById(TOOLKIT_ID)) {
         attachToolbar();
       } else {
         ensureConversationState();
+        applyConversationFoldState(state.visibleRoundCount);
       }
 
       if (state.bulkDeleteMode) {
         scheduleBulkDeleteSync();
       }
-    });
+    }, OBSERVED_DOM_REFRESH_DELAY);
   };
 
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((mutations) => {
+    if (!shouldScheduleObservedDomRefresh(mutations)) {
+      return;
+    }
     scheduleObservedDomRefresh();
   });
 

@@ -103,6 +103,10 @@
   flex: 1;
 }
 
+#chatgpt-conversation-toolkit .chatgpt-toolkit-inline-action {
+  align-items: stretch;
+}
+
 #chatgpt-conversation-toolkit .chatgpt-toolkit-button,
 #chatgpt-conversation-toolkit .chatgpt-toolkit-mini-button,
 .chatgpt-toolkit-dialog-button {
@@ -121,6 +125,24 @@
   padding: 8px 10px;
   background: #1f2937;
   font-size: 13px;
+}
+
+#chatgpt-conversation-toolkit .chatgpt-toolkit-round-input {
+  width: 54px;
+  flex: 0 0 54px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #0f172a;
+  color: #f9fafb;
+  padding: 8px 6px;
+  font-size: 13px;
+  text-align: center;
+}
+
+#chatgpt-conversation-toolkit .chatgpt-toolkit-round-input:focus-visible {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.95);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
 #chatgpt-conversation-toolkit .chatgpt-toolkit-button:hover {

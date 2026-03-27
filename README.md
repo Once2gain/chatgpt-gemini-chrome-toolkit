@@ -8,9 +8,10 @@ Built for long AI chat workflows: ChatGPT/Gemini long conversation optimization,
 
 ## Features
 
-- Optimize long conversations by collapsing older rendered turns
-- Restore hidden turns with the same toggle button
-- Jump to the previous or next user turn
+- Auto-fold long conversations on page load and keep only the latest 5 user rounds visible by default
+- Fold older turns again at any time with `Fold Convs`
+- Expand older history upward with `Unfold [x]`, where `x` is a positive integer
+- Jump to the previous or next visible user turn
 - Export the current conversation as JSON
 - Bulk delete sidebar conversations that are currently rendered
 - Use the same floating toolkit UI on ChatGPT and Gemini
@@ -30,9 +31,10 @@ Built for long AI chat workflows: ChatGPT/Gemini long conversation optimization,
 
 ## Toolkit Actions
 
-- `优化长会话`: collapse older rendered messages in the current thread
+- `Fold Convs`: keep only the latest 5 rounds visible and hide older conversation rounds
+- `Unfold [x]`: expand `x` more hidden rounds upward, defaulting to `5`
 - `上一轮 / 下一轮`: jump by user turns instead of scrolling through long assistant replies
-- `一键导出`: export the current conversation as JSON
+- `一键导出`: export the full current conversation as JSON, including folded content
 - `批量删除 conversation`: select rendered sidebar conversations and remove them in bulk
 
 ## What This Fork Adds
