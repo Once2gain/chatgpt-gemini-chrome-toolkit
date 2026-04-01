@@ -1,3 +1,42 @@
+#chatgpt-conversation-toolkit-anchor,
+:root {
+  --chatgpt-toolkit-code-font:
+    "Google Sans Code",
+    ui-monospace,
+    "SFMono-Regular",
+    "SF Mono",
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+}
+
+main :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+main :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+article :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+article :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+.markdown :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+.markdown :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+message-content :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+message-content :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+.model-response-text :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+.model-response-text :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+user-query :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+user-query :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+model-response :is(pre, code, kbd, samp, [data-language], [class*="language-"]),
+model-response :is(pre, code, kbd, samp, [data-language], [class*="language-"]) *,
+.cm-content,
+.cm-content *,
+.cm-line,
+.cm-line *,
+.monaco-editor,
+.monaco-editor *,
+textarea[data-language],
+textarea[class*="language-"] {
+  font-family: var(--chatgpt-toolkit-code-font) !important;
+}
+
 #chatgpt-conversation-toolkit-anchor {
   position: fixed;
   right: 16px;

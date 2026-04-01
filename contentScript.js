@@ -535,6 +535,65 @@
     }
   };
 
+  const clampNumber = (value, min, max) => Math.min(Math.max(value, min), max);
+
+  const getViewportAxisBounds = (viewportSize, elementSize) => {
+    const maxStart = Math.max(0, viewportSize - elementSize);
+    const min = Math.min(TOOLKIT_VIEWPORT_MARGIN, maxStart);
+    const max = Math.max(min, maxStart - TOOLKIT_VIEWPORT_MARGIN);
+    return { min, max };
+  };
+
+  const getAnchorDimensions = (anchor) => {
+    const rect = anchor.getBoundingClientRect();
+    return {
+      width: Math.max(rect.width, anchor.offsetWidth || 0, 48),
+      height: Math.max(rect.height, anchor.offsetHeight || 0, 48),
+    };
+  };
+
+  const getClampedAnchorPosition = (anchor, position) => {
+    const { width, height } = getAnchorDimensions(anchor);
+    const xBounds = getViewportAxisBounds(window.innerWidth, width);
+    const yBounds = getViewportAxisBounds(window.innerHeight, height);
+
+    return {
+      left: clampNumber(position.left, xBounds.min, xBounds.max),
+      top: clampNumber(position.top, yBounds.min, yBounds.max),
+    };
+  };
+
+  const applyAbsoluteAnchorPosition = (anchor, position) => {
+    anchor.style.left = `${position.left}px`;
+    anchor.style.top = `${position.top}px`;
+    anchor.style.right = "auto";
+    anchor.style.bottom = "auto";
+  };
+
+  const ensureAnchorWithinViewport = (anchor, persist = true) => {
+    if (!anchor) {
+      return null;
+    }
+
+    const rect = anchor.getBoundingClientRect();
+    const nextPosition = getClampedAnchorPosition(anchor, {
+      left: rect.left,
+      top: rect.top,
+    });
+    const changed =
+      Math.abs(nextPosition.left - rect.left) > 0.5 || Math.abs(nextPosition.top - rect.top) > 0.5;
+
+    if (changed) {
+      applyAbsoluteAnchorPosition(anchor, nextPosition);
+    }
+
+    if (persist && (changed || loadMinimizedPosition())) {
+      saveMinimizedPosition(nextPosition);
+    }
+
+    return nextPosition;
+  };
+
   const getAllConversationNodes = () => {
     const visibleNodes = getMessageNodes();
     const collapsedNodeSet = new Set(state.collapsedNodes.map(({ node }) => node));
@@ -1783,13 +1842,13 @@
   const applyMinimizedPosition = (anchor) => {
     const position = loadMinimizedPosition();
     if (!position) {
+      ensureAnchorWithinViewport(anchor, false);
       return;
     }
     if (typeof position.left === "number" && typeof position.top === "number") {
-      anchor.style.left = `${position.left}px`;
-      anchor.style.top = `${position.top}px`;
-      anchor.style.right = "auto";
-      anchor.style.bottom = "auto";
+      const nextPosition = getClampedAnchorPosition(anchor, position);
+      applyAbsoluteAnchorPosition(anchor, nextPosition);
+      saveMinimizedPosition(nextPosition);
     }
   };
 
@@ -1937,13 +1996,12 @@
       moved = true;
       const deltaX = event.clientX - startX;
       const deltaY = event.clientY - startY;
-      const nextLeft = startLeft + deltaX;
-      const nextTop = startTop + deltaY;
+      const nextPosition = getClampedAnchorPosition(anchor, {
+        left: startLeft + deltaX,
+        top: startTop + deltaY,
+      });
 
-      anchor.style.left = `${nextLeft}px`;
-      anchor.style.top = `${nextTop}px`;
-      anchor.style.right = "auto";
-      anchor.style.bottom = "auto";
+      applyAbsoluteAnchorPosition(anchor, nextPosition);
 
       if (!state.isMinimized) {
         updateToolbarPlacement();
@@ -1959,8 +2017,10 @@
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
 
-      const rect = anchor.getBoundingClientRect();
-      saveMinimizedPosition({ left: rect.left, top: rect.top });
+      const nextPosition = ensureAnchorWithinViewport(anchor);
+      if (nextPosition) {
+        saveMinimizedPosition(nextPosition);
+      }
 
       window.setTimeout(() => {
         moved = false;
@@ -2060,6 +2120,10 @@
   );
 
   window.addEventListener("resize", () => {
+    const anchor = getToolkitAnchor();
+    if (anchor) {
+      ensureAnchorWithinViewport(anchor);
+    }
     if (!state.isMinimized) {
       renderToolbarVisibility();
     }
