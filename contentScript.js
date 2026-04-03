@@ -10,6 +10,7 @@
   const STATUS_ID = "chatgpt-conversation-toolkit-status";
   const MINIMIZED_ID = "chatgpt-toolkit-minimized";
   const TOOLKIT_ANCHOR_ID = "chatgpt-conversation-toolkit-anchor";
+  const HOVER_NAVIGATION_ID = "chatgpt-toolkit-hover-navigation";
   const POSITION_KEY = "chatgpt-toolkit-position";
   const COLLAPSE_TOGGLE_BUTTON_ID = "chatgpt-toolkit-collapse-toggle";
   const BULK_DELETE_BUTTON_ID = "chatgpt-toolkit-bulk-toggle";
@@ -126,6 +127,8 @@
     isDeletingConversations: false,
     jumpHighlightTimer: null,
     highlightedMessageNode: null,
+    hoverNavigationVisible: false,
+    hoverNavigationHideTimer: null,
     toolbarPlacement: "placement-rd",
     observerRefreshQueued: false,
   };
@@ -1154,6 +1157,54 @@
   const getBulkDeletePopover = () => document.getElementById(BULK_DELETE_POPOVER_ID);
   const getCollapseToggleButton = () => document.getElementById(COLLAPSE_TOGGLE_BUTTON_ID);
   const getToolkitAnchor = () => document.getElementById(TOOLKIT_ANCHOR_ID);
+  const getHoverNavigationPopover = () => document.getElementById(HOVER_NAVIGATION_ID);
+
+  const clearHoverNavigationHideTimer = () => {
+    if (state.hoverNavigationHideTimer) {
+      window.clearTimeout(state.hoverNavigationHideTimer);
+      state.hoverNavigationHideTimer = null;
+    }
+  };
+
+  const renderHoverNavigationVisibility = () => {
+    const anchor = getToolkitAnchor();
+    const popover = getHoverNavigationPopover();
+    if (!anchor || !popover) {
+      return;
+    }
+
+    const shouldShow = state.isMinimized && state.hoverNavigationVisible;
+    anchor.classList.toggle("is-hover-navigation-visible", shouldShow);
+    popover.setAttribute("aria-hidden", shouldShow ? "false" : "true");
+    updateHoverNavigationPlacement();
+  };
+
+  const showHoverNavigation = () => {
+    if (!state.isMinimized) {
+      return;
+    }
+
+    clearHoverNavigationHideTimer();
+    if (!state.hoverNavigationVisible) {
+      state.hoverNavigationVisible = true;
+      renderHoverNavigationVisibility();
+    }
+  };
+
+  const hideHoverNavigation = () => {
+    clearHoverNavigationHideTimer();
+    if (!state.hoverNavigationVisible) {
+      return;
+    }
+
+    state.hoverNavigationVisible = false;
+    renderHoverNavigationVisibility();
+  };
+
+  const scheduleHideHoverNavigation = () => {
+    clearHoverNavigationHideTimer();
+    hideHoverNavigation();
+  };
 
   const renderCollapseToggleControl = () => {
     const button = getCollapseToggleButton();
@@ -1693,14 +1744,6 @@
         </button>
       </div>
       <div class="chatgpt-toolkit-actions">
-        <div class="chatgpt-toolkit-button-row">
-          <button type="button" class="chatgpt-toolkit-button" data-action="jump-user-up">
-            上一轮
-          </button>
-          <button type="button" class="chatgpt-toolkit-button" data-action="jump-user-down">
-            下一轮
-          </button>
-        </div>
         <button type="button" id="${COLLAPSE_TOGGLE_BUTTON_ID}" class="chatgpt-toolkit-button" data-action="fold-conversations">
           Fold Convs
         </button>
@@ -1759,36 +1802,7 @@
         return;
       }
 
-      if (action === "minimize") {
-        minimizeToolbar();
-      }
-      if (action === "fold-conversations") {
-        foldConversationConvs();
-      }
-      if (action === "unfold-rounds") {
-        unfoldConversationRounds();
-      }
-      if (action === "jump-user-up") {
-        navigateUserMessage("up");
-      }
-      if (action === "jump-user-down") {
-        navigateUserMessage("down");
-      }
-      if (action === "export") {
-        exportMessages();
-      }
-      if (action === "toggle-bulk-delete") {
-        toggleBulkDeleteMode();
-      }
-      if (action === "select-all") {
-        selectAllRenderedConversations();
-      }
-      if (action === "clear-all") {
-        clearBulkDeleteSelection();
-      }
-      if (action === "prompt-bulk-delete") {
-        requestBulkDeleteConfirmation();
-      }
+      handleToolkitAction(action);
     });
 
     container.addEventListener("input", (event) => {
@@ -1816,6 +1830,103 @@
     return container;
   };
 
+  const handleToolkitAction = (action) => {
+    if (action === "minimize") {
+      minimizeToolbar();
+    }
+    if (action === "fold-conversations") {
+      foldConversationConvs();
+    }
+    if (action === "unfold-rounds") {
+      unfoldConversationRounds();
+    }
+    if (action === "jump-user-up") {
+      navigateUserMessage("up");
+    }
+    if (action === "jump-user-down") {
+      navigateUserMessage("down");
+    }
+    if (action === "export") {
+      exportMessages();
+    }
+    if (action === "toggle-bulk-delete") {
+      toggleBulkDeleteMode();
+    }
+    if (action === "select-all") {
+      selectAllRenderedConversations();
+    }
+    if (action === "clear-all") {
+      clearBulkDeleteSelection();
+    }
+    if (action === "prompt-bulk-delete") {
+      requestBulkDeleteConfirmation();
+    }
+  };
+
+  const buildHoverNavigationPopover = () => {
+    const container = document.createElement("div");
+    container.id = HOVER_NAVIGATION_ID;
+    container.className = "chatgpt-toolkit-hover-navigation";
+    container.setAttribute("aria-hidden", "true");
+    container.innerHTML = `
+      <button type="button" class="chatgpt-toolkit-hover-nav-button" data-action="jump-user-up">
+        上一轮
+      </button>
+      <button type="button" class="chatgpt-toolkit-hover-nav-button" data-action="jump-user-down">
+        下一轮
+      </button>
+    `;
+
+    container.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const actionTarget = target.closest("[data-action]");
+      if (!(actionTarget instanceof HTMLElement)) {
+        return;
+      }
+
+      const action = actionTarget.dataset.action;
+      if (!action) {
+        return;
+      }
+
+      handleToolkitAction(action);
+    });
+
+    return container;
+  };
+
+  const enableHoverNavigation = (button, popover) => {
+    if (!button || !popover) {
+      return;
+    }
+
+    const handlePointerEnter = () => {
+      showHoverNavigation();
+    };
+
+    const handlePointerLeave = (event) => {
+      const nextTarget = event.relatedTarget;
+      if (
+        nextTarget instanceof Node &&
+        (button.contains(nextTarget) || popover.contains(nextTarget))
+      ) {
+        return;
+      }
+      scheduleHideHoverNavigation();
+    };
+
+    [button, popover].forEach((element) => {
+      element.addEventListener("pointerenter", handlePointerEnter);
+      element.addEventListener("pointerleave", handlePointerLeave);
+      element.addEventListener("focusin", handlePointerEnter);
+      element.addEventListener("focusout", handlePointerLeave);
+    });
+  };
+
   const buildMinimizedButton = () => {
     const button = document.createElement("button");
     button.id = MINIMIZED_ID;
@@ -1835,7 +1946,7 @@
   const buildToolkitAnchor = () => {
     const anchor = document.createElement("div");
     anchor.id = TOOLKIT_ANCHOR_ID;
-    anchor.className = state.toolbarPlacement;
+    anchor.className = `${state.toolbarPlacement} nav-placement-left`;
     return anchor;
   };
 
@@ -1935,6 +2046,23 @@
     anchor.classList.add(bestPlacement.name);
   };
 
+  const updateHoverNavigationPlacement = () => {
+    const anchor = getToolkitAnchor();
+    const hoverNavigation = getHoverNavigationPopover();
+    if (!anchor || !hoverNavigation) {
+      return;
+    }
+
+    const anchorRect = anchor.getBoundingClientRect();
+    const popoverWidth = hoverNavigation.offsetWidth || 124;
+    const availableRight = window.innerWidth - anchorRect.right - TOOLKIT_POPUP_GAP;
+    const availableLeft = anchorRect.left - TOOLKIT_POPUP_GAP;
+    const preferLeft = availableLeft >= popoverWidth || availableLeft >= availableRight;
+
+    anchor.classList.toggle("nav-placement-left", preferLeft);
+    anchor.classList.toggle("nav-placement-right", !preferLeft);
+  };
+
   const renderToolbarVisibility = () => {
     const anchor = getToolkitAnchor();
     const toolbar = document.getElementById(TOOLKIT_ID);
@@ -1945,15 +2073,21 @@
 
     toolbar.classList.toggle("is-expanded", !state.isMinimized);
     minimized.classList.toggle("is-active", !state.isMinimized);
+    anchor.classList.toggle("is-toolbar-open", !state.isMinimized);
     minimized.setAttribute(
       "aria-label",
       state.isMinimized ? `展开 ${TOOLKIT_TITLE}` : `收起 ${TOOLKIT_TITLE}`
     );
     minimized.setAttribute("aria-expanded", state.isMinimized ? "false" : "true");
 
+    updateHoverNavigationPlacement();
     if (!state.isMinimized) {
+      hideHoverNavigation();
       updateToolbarPlacement();
+      return;
     }
+
+    renderHoverNavigationVisibility();
   };
 
   const minimizeToolbar = () => {
@@ -2002,6 +2136,7 @@
       });
 
       applyAbsoluteAnchorPosition(anchor, nextPosition);
+      updateHoverNavigationPlacement();
 
       if (!state.isMinimized) {
         updateToolbarPlacement();
@@ -2021,6 +2156,7 @@
       if (nextPosition) {
         saveMinimizedPosition(nextPosition);
       }
+      updateHoverNavigationPlacement();
 
       window.setTimeout(() => {
         moved = false;
@@ -2058,18 +2194,22 @@
 
     const anchor = buildToolkitAnchor();
     const toolbar = buildToolbar();
+    const hoverNavigation = buildHoverNavigationPopover();
     const minimizedButton = buildMinimizedButton();
     anchor.appendChild(toolbar);
+    anchor.appendChild(hoverNavigation);
     anchor.appendChild(minimizedButton);
     document.body.appendChild(anchor);
     ensureConfirmDialog();
     applyMinimizedPosition(anchor);
     enableDrag(anchor, minimizedButton);
+    enableHoverNavigation(minimizedButton, hoverNavigation);
     ensureConversationState();
     renderCollapseToggleControl();
     renderUnfoldRoundsInput();
     renderBulkDeleteControls();
     applyConversationFoldState(state.visibleRoundCount);
+    updateHoverNavigationPlacement();
     renderToolbarVisibility();
 
     if (state.bulkDeleteMode) {
@@ -2123,6 +2263,7 @@
     const anchor = getToolkitAnchor();
     if (anchor) {
       ensureAnchorWithinViewport(anchor);
+      updateHoverNavigationPlacement();
     }
     if (!state.isMinimized) {
       renderToolbarVisibility();
